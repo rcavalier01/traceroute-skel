@@ -70,11 +70,25 @@ int main (int argc, char *argv[]) {
 //
 
   //1. Allocate two 64 byte buffers. One for sending and one for receiving.
-  //char sendBuff[] = ;
-  //char recBuff[] = ;
+  char *sendBuff = new char[DATAGRAM_SIZE];
+  char *recBuff = new char[DATAGRAM_SIZE];
   // 2. Fill the whole buffer with a pattern of characters of your choice.
+  memset(sendBuff, 'T', DATAGRAM_SIZE);
   //"Call me Ishmael. Some years ago- never mind how long precisely- "
   // 3. Fill in all the fields of the IP header at the front of the buffer.
+  struct iphdr *ip_header = (struct iphdr *) sendBuff;
+  ip_header->daddr= inet_addr(destIP);
+  ip_header->frag_off = 0;
+  ip_header->id=htons(0);
+  ip_header->ihl = 5;
+  ip_header->protocol=IPPROTO_ICMP;
+  //ip_header->saddr = 0;
+  //ip_header->check = 0;
+  ip_header->tos = 0;
+  ip_header->tot_len = htons(DATAGRAM_SIZE);
+  ip_header->ttl=64;
+  ip_header->version = 4;
+  
     // a. You don’t need to fill in source IP or checksum
   // 4. Fill in all the fields of the ICMP header right behind the IP header.
   // 5. Create the send and receive sockets.
