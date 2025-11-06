@@ -30,15 +30,30 @@ void buildDatagram () {
   memset(packet + sizeof(ip-header) + sizeof(icmp-header),’A’,sizeof(payload);
 }
 //kernel will fill in the ID, Source IP and Checksum fields
-void fill_in_ICMP_header(char *packet){
-
+void fill_in_ICMP_header(struct icmp *icmp_header){
+  icmp_header->icmp_cksum = 0;
+  icmp_header->icmp_code = 0;
+  icmp_header->icmp_type = ICMP_ECHO;
+  icmp_header->icmp_dun.id_data = 0;
 }
 
-void fill_in_IP_header(char *packet) {
-  struct iphdr *ip = (struct iphdr *)packet; // Cast the pointer
-  ip->version = 4;
-  ip->ihl = 5; // Header length / 4
-  ip->tos = 0;
+void fill_in_IP_header(struct iphdr *ip_header, const char *destIP) {
+  ip_header->daddr= inet_addr(destIP);
+  ip_header->frag_off = 0;
+  ip_header->id=htons(0);
+  ip_header->ihl = 5;
+  ip_header->protocol=IPPROTO_ICMP;
+  //ip_header->saddr = 0;
+  //ip_header->check = 0;
+  ip_header->tos = 0;
+  ip_header->tot_len = htons(DATAGRAM_SIZE);
+  ip_header->ttl=64; ///////What should this be
+  ip_header->version = 4;
+  
+  //struct iphdr *ip = (struct iphdr *)packet; // Cast the pointer
+  //ip->version = 4;
+  //ip->ihl = 5; // Header length / 4
+  //ip->tos = 0;
   // Fill in the rest of the header fields.
 }
 
@@ -73,21 +88,12 @@ int main (int argc, char *argv[]) {
   char *sendBuff = new char[DATAGRAM_SIZE];
   char *recBuff = new char[DATAGRAM_SIZE];
   // 2. Fill the whole buffer with a pattern of characters of your choice.
+  std::string pattern = "Call me Ishmael. Some years ago- never mind how long precisely- ";
   memset(sendBuff, 'T', DATAGRAM_SIZE);
   //"Call me Ishmael. Some years ago- never mind how long precisely- "
   // 3. Fill in all the fields of the IP header at the front of the buffer.
-  struct iphdr *ip_header = (struct iphdr *) sendBuff;
-  ip_header->daddr= inet_addr(destIP);
-  ip_header->frag_off = 0;
-  ip_header->id=htons(0);
-  ip_header->ihl = 5;
-  ip_header->protocol=IPPROTO_ICMP;
-  //ip_header->saddr = 0;
-  //ip_header->check = 0;
-  ip_header->tos = 0;
-  ip_header->tot_len = htons(DATAGRAM_SIZE);
-  ip_header->ttl=64;
-  ip_header->version = 4;
+ // struct iphdr *ip_header = (struct iphdr *) sendBuff;
+
   
     // a. You don’t need to fill in source IP or checksum
   // 4. Fill in all the fields of the ICMP header right behind the IP header.
