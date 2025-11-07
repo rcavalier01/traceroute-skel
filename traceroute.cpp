@@ -21,20 +21,33 @@ uint16_t checksum(unsigned short *buffer, int size) {
     sum += (sum >> 16);
     return (unsigned short) (~sum);
 }
+void fill_in_IP_header(struct iphdr *ip_header, const char *destIP);
+void fill_in_ICMP_header(struct icmp *icmp_header);
+void buildDatagram (char *pkt, const char *destIP) {
+  memset(pkt, 0, DATAGRAM_SIZE);
+  struct iphdr *ip_header = (struct iphdr *)pkt;
+  fill_in_IP_header(ip_header, destIP);
 
-void buildDatagram () {
-  int length = sizeof(ip-header) + sizeof(icmp-header) + sizeof (payload);
-  char *packet = new char[length]();
-  fill_in_IP_header(packet[0]);
-  fill_in_ICMP_header(packet + sizeof(ip-header));
-  memset(packet + sizeof(ip-header) + sizeof(icmp-header),’A’,sizeof(payload);
+  struct icmp *icmp_header = (struct icmp *)(pkt + sizeof(struct iphdr));
+  fill_in_ICMP_header(icmp_header);
+  const char *pattern = "Call me Ishmael. Some years ago- never mind how long precisely- ";
+  char *payload = pkt + sizeof(struct iphdr) + sizeof(struct icmp);
+  size_t p_l = DATAGRAM_SIZE - sizeof(struct iphdr) - sizeof(struct icmp);
+  strncpy(payload, pattern, p_l - 1);
+  printf("Payload length: %zu", p_l);
+  // int length = sizeof(ip-header) + sizeof(icmp-header) + sizeof (payload);
+  // char *packet = new char[length]();
+  // fill_in_IP_header(packet[0]);
+  // fill_in_ICMP_header(packet + sizeof(ip-header));
+  // memset(packet + sizeof(ip-header) + sizeof(icmp-header),’A’,sizeof(payload);
 }
 //kernel will fill in the ID, Source IP and Checksum fields
 void fill_in_ICMP_header(struct icmp *icmp_header){
   icmp_header->icmp_cksum = 0;
   icmp_header->icmp_code = 0;
   icmp_header->icmp_type = ICMP_ECHO;
-  icmp_header->icmp_dun.id_data = 0;
+  icmp_header->icmp_hun.ih_idseq.icd_id = 1000;
+  icmp_header->icmp_hun.ih_idseq.icd_seq =1;
 }
 
 void fill_in_IP_header(struct iphdr *ip_header, const char *destIP) {
@@ -88,12 +101,13 @@ int main (int argc, char *argv[]) {
   char *sendBuff = new char[DATAGRAM_SIZE];
   char *recBuff = new char[DATAGRAM_SIZE];
   // 2. Fill the whole buffer with a pattern of characters of your choice.
-  std::string pattern = "Call me Ishmael. Some years ago- never mind how long precisely- ";
-  memset(sendBuff, 'T', DATAGRAM_SIZE);
+  
+  //memset(sendBuff, 'T', DATAGRAM_SIZE);
   //"Call me Ishmael. Some years ago- never mind how long precisely- "
   // 3. Fill in all the fields of the IP header at the front of the buffer.
  // struct iphdr *ip_header = (struct iphdr *) sendBuff;
-
+  
+  buildDatagram(sendBuff, destIP.c_str());
   
     // a. You don’t need to fill in source IP or checksum
   // 4. Fill in all the fields of the ICMP header right behind the IP header.
@@ -113,6 +127,10 @@ int main (int argc, char *argv[]) {
           // a. print message
           // b. Set not-done-reading to false
     // e. Increment TTL by 1.
+
+    delete[] sendBuff;
+    delete[] recBuff;
+    return 0;
     
 
 }
