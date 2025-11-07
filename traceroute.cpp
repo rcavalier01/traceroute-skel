@@ -112,7 +112,15 @@ int main (int argc, char *argv[]) {
     // a. You don’t need to fill in source IP or checksum
   // 4. Fill in all the fields of the ICMP header right behind the IP header.
   // 5. Create the send and receive sockets.
+  if ((sockFD = socket(AF_INET, SOCK_RAW, IPPROTO_RAW)) == -1) {
+    perror("socket");
+  }
+  if (sendto(sendFd, packet, length, 0, (struct sockaddr *) &dest_addr, sizeof(dest_addr)) == -1){
+    perror("sendto");
+    return -1;
+  }
   // 6. while (CURRENT_TTL <= 31) and (reply-not-received)
+  for(int current_ttl = 0; current_ttl <=31; current_ttl++){
     // a. Set the TTL in the IP header in the buffer to CURRENT_TTL
     // b. Set the checksum in the ICMP header
     // c. Send the buffer using sendfrom()
@@ -127,10 +135,22 @@ int main (int argc, char *argv[]) {
           // a. print message
           // b. Set not-done-reading to false
     // e. Increment TTL by 1.
+  }
+  // Convert from a dotted decimal string to network representation:
+  inet_addr(destIP.c_str());
+  // Place a dotted decimal string into a address structure
+  struct sockaddr_in dest_addr;
+  memset(&dest_addr, 0, sizeof(dest_addr));
+  dest_addr.sin_family = AF_INET;
+  dest_addr.sin_addr.s_addr = inet_addr(destIP.c_str());
+  //Convert an address structure to a dotted decimal string.
+  inet_ntop(AF_INET, &recv_addr.sin_addr, respondent_ip, INET_ADDRSTRLEN);
 
-    delete[] sendBuff;
-    delete[] recBuff;
-    return 0;
+  int select(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds, struct timeval *timout);
+
+  delete[] sendBuff;
+  delete[] recBuff;
+  return 0;
     
 
 }
