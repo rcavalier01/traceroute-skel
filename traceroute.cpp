@@ -101,30 +101,51 @@ int main (int argc, char *argv[]) {
   char *sendBuff = new char[DATAGRAM_SIZE];
   char *recBuff = new char[DATAGRAM_SIZE];
   // 2. Fill the whole buffer with a pattern of characters of your choice.
-  
+  // Convert from a dotted decimal string to network representation:
+  buildDatagram(sendBuff, destIP.c_str());
   //memset(sendBuff, 'T', DATAGRAM_SIZE);
   //"Call me Ishmael. Some years ago- never mind how long precisely- "
   // 3. Fill in all the fields of the IP header at the front of the buffer.
- // struct iphdr *ip_header = (struct iphdr *) sendBuff;
-  
-  buildDatagram(sendBuff, destIP.c_str());
-  
+      //fill_in_ip_header()
     // a. You don’t need to fill in source IP or checksum
   // 4. Fill in all the fields of the ICMP header right behind the IP header.
+      //fill_in_icmp_header()
   // 5. Create the send and receive sockets.
-  if ((sockFD = socket(AF_INET, SOCK_RAW, IPPROTO_RAW)) == -1) {
-    perror("socket");
+  int sendSockFD;
+  int recSockFD;
+  if ((sendSockFD = socket(AF_INET, SOCK_RAW, IPPROTO_RAW)) == -1) {
+    perror("send socket");
+    exit(-1);
   }
-  if (sendto(sendFd, packet, length, 0, (struct sockaddr *) &dest_addr, sizeof(dest_addr)) == -1){
-    perror("sendto");
-    return -1;
+  if ((recSockFD = socket(AF_INET, SOCK_RAW, IPPROTO_ICMP)) == -1) {
+    perror("receive socket");
+    exit(-1);
   }
+  // Place a dotted decimal string into a address structure
+  struct sockaddr_in dest_addr;
+  memset(&dest_addr, 0, sizeof(dest_addr));
+  dest_addr.sin_family = AF_INET;
+  dest_addr.sin_addr.s_addr = inet_addr(destIP.c_str());
+
   // 6. while (CURRENT_TTL <= 31) and (reply-not-received)
   for(int current_ttl = 0; current_ttl <=31; current_ttl++){
     // a. Set the TTL in the IP header in the buffer to CURRENT_TTL
+    struct iphdr *ip_header = (struct iphdr *)sendBuff;
+    struct icmp *icmp_header = (struct icmp *)(sendBuff+sizeof(struct iphdr));
+    ip_header->ttl = current_ttl;
     // b. Set the checksum in the ICMP header
+    //initialize?
+    icmp_header->icmp_cksum = checksum((unsigned short *)icmp_header, DATAGRAM_SIZE - sizeof(struct iphdr));
     // c. Send the buffer using sendfrom()
+    if (sendto(sendSockFD, sendBuff, DATAGRAM_SIZE, 0, (struct sockaddr *) &dest_addr, sizeof(dest_addr)) == -1){
+      perror("sendto");
+      return -1;
+      //cont?
+    }
     // d. While (now < START_TIME + 15) and (not-done-reading)
+    fd_set mySet;
+    FD_ZERO(&mySet);
+    FD_SET(recSockFD, &mySet);
       // i. Use select() to sleep for up to 5 seconds, wake up if data arrives.
       // ii. If data has arrived, read it with recevfrom()
         // 1. If received data is Echo Reply from the destination
@@ -136,15 +157,10 @@ int main (int argc, char *argv[]) {
           // b. Set not-done-reading to false
     // e. Increment TTL by 1.
   }
-  // Convert from a dotted decimal string to network representation:
-  inet_addr(destIP.c_str());
-  // Place a dotted decimal string into a address structure
-  struct sockaddr_in dest_addr;
-  memset(&dest_addr, 0, sizeof(dest_addr));
-  dest_addr.sin_family = AF_INET;
-  dest_addr.sin_addr.s_addr = inet_addr(destIP.c_str());
+ 
+ 
   //Convert an address structure to a dotted decimal string.
-  inet_ntop(AF_INET, &recv_addr.sin_addr, respondent_ip, INET_ADDRSTRLEN);
+  //inet_ntop(AF_INET, &recv_addr.sin_addr, respondent_ip, INET_ADDRSTRLEN);
 
   int select(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds, struct timeval *timout);
 
