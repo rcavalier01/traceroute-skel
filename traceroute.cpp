@@ -128,7 +128,7 @@ int main (int argc, char *argv[]) {
   dest_addr.sin_addr.s_addr = inet_addr(destIP.c_str());
 
   // 6. while (CURRENT_TTL <= 31) and (reply-not-received)
-  for(int current_ttl = 0; current_ttl <=31; current_ttl++){
+  for(int current_ttl = 2; current_ttl <=31; current_ttl++){
     // a. Set the TTL in the IP header in the buffer to CURRENT_TTL
     struct iphdr *ip_header = (struct iphdr *)sendBuff;
     struct icmp *icmp_header = (struct icmp *)(sendBuff+sizeof(struct iphdr));
@@ -142,10 +142,13 @@ int main (int argc, char *argv[]) {
       return -1;
       //cont?
     }
+    printf("Sent Datagram TTL: %d\n", current_ttl);
     // d. While (now < START_TIME + 15) and (not-done-reading)
     fd_set mySet;
     FD_ZERO(&mySet);
     FD_SET(recSockFD, &mySet);
+
+    struct timeval timeout;
       // i. Use select() to sleep for up to 5 seconds, wake up if data arrives.
       // ii. If data has arrived, read it with recevfrom()
         // 1. If received data is Echo Reply from the destination
