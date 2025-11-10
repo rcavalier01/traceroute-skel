@@ -149,7 +149,15 @@ int main (int argc, char *argv[]) {
     FD_SET(recSockFD, &mySet);
 
     struct timeval timeout;
+    timeout.tv_sec = 5;
+    timeout.tv_usec = 0;
+
       // i. Use select() to sleep for up to 5 seconds, wake up if data arrives.
+    int poll = select(recSockFD+1, &mySet, NULL, NULL, &timeout);
+    if(poll < 0){
+      perror("select");
+    break;
+    }
       // ii. If data has arrived, read it with recevfrom()
         // 1. If received data is Echo Reply from the destination
           // a. Print message
