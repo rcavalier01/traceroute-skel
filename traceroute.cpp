@@ -99,7 +99,7 @@ int main (int argc, char *argv[]) {
 
   //1. Allocate two 64 byte buffers. One for sending and one for receiving.
   char *sendBuff = new char[DATAGRAM_SIZE];
-  char *recBuff = new char[DATAGRAM_SIZE];
+  char *recBuff = new char[512];
   // 2. Fill the whole buffer with a pattern of characters of your choice.
   // Convert from a dotted decimal string to network representation:
   buildDatagram(sendBuff, destIP.c_str());
@@ -129,12 +129,14 @@ int main (int argc, char *argv[]) {
 
   // 6. while (CURRENT_TTL <= 31) and (reply-not-received)
   for(int current_ttl = 2; current_ttl <=31; current_ttl++){
+    bool responseGot = false;
     // a. Set the TTL in the IP header in the buffer to CURRENT_TTL
     struct iphdr *ip_header = (struct iphdr *)sendBuff;
     struct icmp *icmp_header = (struct icmp *)(sendBuff+sizeof(struct iphdr));
     ip_header->ttl = current_ttl;
     // b. Set the checksum in the ICMP header
     //initialize?
+    icmp_header->icmp_cksum = 0;
     icmp_header->icmp_cksum = checksum((unsigned short *)icmp_header, DATAGRAM_SIZE - sizeof(struct iphdr));
     // c. Send the buffer using sendfrom()
     if (sendto(sendSockFD, sendBuff, DATAGRAM_SIZE, 0, (struct sockaddr *) &dest_addr, sizeof(dest_addr)) == -1){
@@ -143,51 +145,72 @@ int main (int argc, char *argv[]) {
       //cont?
     }
     printf("Sent Datagram TTL: %d\n", current_ttl);
+
     // d. While (now < START_TIME + 15) and (not-done-reading)
-    fd_set mySet;
-    FD_ZERO(&mySet);
-    FD_SET(recSockFD, &mySet);
-
     struct timeval timeout;
-    timeout.tv_sec = 5;
-    timeout.tv_usec = 0;
-
+    fd_set mySet;
+    for(int i = 0; i<3 && !responseGot; i++){
+      FD_ZERO(&mySet);
+      FD_SET(recSockFD, &mySet);
+      timeout.tv_sec = 5;
+      timeout.tv_usec = 0;
       // i. Use select() to sleep for up to 5 seconds, wake up if data arrives.
-    int poll = select(recSockFD+1, &mySet, NULL, NULL, &timeout);
-    if(poll == 0){
-      printf("%d ***timeout", current_ttl);
-      continue;
-    }else if(poll < 0){
-      perror("select");
-      break;
-    
+      int poll = select(recSockFD+1, &mySet, NULL, NULL, &timeout);
+      if(poll == 0){
+        printf("%d ***timeout", current_ttl);
+        continue;
+      }else if(poll < 0){
+        perror("select");
+        break;
+      }else{
+        responseGot = true;
+      }
+    }
+    if(!responseGot){
+      printf("%d *** no response from poll after 15 seconds ***\n", current_ttl );
+    }
     
       // ii. If data has arrived, read it with recevfrom()
-      if(FD_ISSET(recSockFD, &mySet)){
+    if(FD_ISSET(recSockFD, &mySet)){
+      struct sockaddr_in rec_addr;
+      socklen_t r_length = sizeof(rec_addr);
+      ssize_t bytes_read = recvfrom(recSockFD, recBuff, sizeof(recBuff), 0, (struct sockaddr *)&rec_addr, &r_length);
+      if(bytes_read < 0){
+          perror("recvfrom");
+          continue;
+      }
+      char respAddress[INET_ADDRSTRLEN];
+      inet_ntop(AF_INET, &rec_addr.sin_addr, respAddress, INET_ADDRSTRLEN);
         // 1. If received data is Echo Reply from the destination
+      struct iphdr *rec_ip = (struct iphdr *)recBuff;
+      struct icmp *rec_icmp = (struct icmp *)(recBuff + (rec_ip->ihl*4)) ;
+      if(rec_icmp->icmp_type == ICMP_ECHOREPLY){
           // a. Print message
           // b. Set reply-not-received to false
           // c. Set not-done-reading to false
-        // 2. If received data is TTL Time Exceeded; TTL
+        printf("%d %s completed\n", current_ttl, respAddress);
+        break;
+      }else if(rec_icmp->icmp_type == ICMP_TIME_EXCEEDED){
+          // 2. If received data is TTL Time Exceeded; TTL
           // a. print message
           // b. Set not-done-reading to false
-        struct sockaddr_in rec_addr;
-        socklen_t r_length = sizeof(rec_addr);
-        ssize_t bytes_read = recvfrom(recSockFD, recBuff, sizeof(recBuff), 0, (struct sockaddr *)&rec_addr, &r_length);
-        if(bytes_read < 0){
-          perror("recvfrom");
-          continue;
-        }
-        char respAddress[INET_ADDRSTRLEN];
-        inet_ntop(AF_INET, &rec_addr.sin_addr, respAddress, INET_ADDRSTRLEN);
-        printf("%d %s\n", current_ttl, respAddress);
-        auto current = rec_addr.sin_addr.s_addr;
-        auto desired = dest_addr.sin_addr.s_addr;
-        if(current == desired){
-          printf("yay!\n");
+          printf("%d %s TTL exceeded\n", current_ttl, respAddress);
           break;
-        }
+      }else{
+        printf("TTL: %2d, Response Address: %s, Weird ICMP type: %d \n", current_ttl, respAddress, rec_icmp->icmp_type);
+        break;
       }
+        
+        
+        
+    
+      //auto current = rec_addr.sin_addr.s_addr;
+      //auto desired = dest_addr.sin_addr.s_addr;
+      //if(current == desired){
+      //  printf("yay!\n");
+      //  break;
+      //}
+    }
         
     // e. Increment TTL by 1.
   }
@@ -196,7 +219,6 @@ int main (int argc, char *argv[]) {
   //Convert an address structure to a dotted decimal string.
   //inet_ntop(AF_INET, &recv_addr.sin_addr, respondent_ip, INET_ADDRSTRLEN);
 
-  int select(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds, struct timeval *timout);
   close(sendSockFD);
   close(recSockFD);
   delete[] sendBuff;
