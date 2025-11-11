@@ -4,6 +4,7 @@
 
 
 #define DATAGRAM_SIZE 64
+#define ICMP_HEADER_SIZE 8
 // ****************************************************************************
 // * Compute the Internet Checksum over an arbitrary buffer.
 // * (written with the help of ChatGPT 3.5)
@@ -22,19 +23,19 @@ uint16_t checksum(unsigned short *buffer, int size) {
     return (unsigned short) (~sum);
 }
 void fill_in_IP_header(struct iphdr *ip_header, const char *destIP);
-void fill_in_ICMP_header(struct icmp *icmp_header);
+void fill_in_ICMP_header(struct icmphdr *icmp_header);
 void buildDatagram (char *pkt, const char *destIP) {
   memset(pkt, 0, DATAGRAM_SIZE);
   struct iphdr *ip_header = (struct iphdr *)pkt;
   fill_in_IP_header(ip_header, destIP);
 
-  struct icmp *icmp_header = (struct icmp *)(pkt + sizeof(struct iphdr));
+  struct icmphdr *icmp_header = (struct icmphdr *)(pkt + sizeof(struct iphdr));
   fill_in_ICMP_header(icmp_header);
   const char *pattern = "Call me Ishmael. Some years ago- never mind how long precisely- ";
-  char *payload = pkt + sizeof(struct iphdr) + sizeof(struct icmp);
-  size_t p_l = DATAGRAM_SIZE - sizeof(struct iphdr) - sizeof(struct icmp);
+  char *payload = pkt + sizeof(struct iphdr) + ICMP_HEADER_SIZE;
+  size_t p_l = DATAGRAM_SIZE - sizeof(struct iphdr) - ICMP_HEADER_SIZE;
   strncpy(payload, pattern, p_l - 1);
-  printf("Payload length: %zu", p_l);
+  printf("Payload length: %zu\n", p_l);
   // int length = sizeof(ip-header) + sizeof(icmp-header) + sizeof (payload);
   // char *packet = new char[length]();
   // fill_in_IP_header(packet[0]);
@@ -42,12 +43,12 @@ void buildDatagram (char *pkt, const char *destIP) {
   // memset(packet + sizeof(ip-header) + sizeof(icmp-header),’A’,sizeof(payload);
 }
 //kernel will fill in the ID, Source IP and Checksum fields
-void fill_in_ICMP_header(struct icmp *icmp_header){
-  icmp_header->icmp_cksum = 0;
-  icmp_header->icmp_code = 0;
-  icmp_header->icmp_type = ICMP_ECHO;
-  icmp_header->icmp_hun.ih_idseq.icd_id = 1000;
-  icmp_header->icmp_hun.ih_idseq.icd_seq =1;
+void fill_in_ICMP_header(struct icmphdr *icmp_header){
+  icmp_header->checksum = 0;
+  icmp_header->code = 0;
+  icmp_header->type = ICMP_ECHO;
+  icmp_header->un.echo.id = htons(1000);
+  icmp_header->un.echo.sequence =1;
 }
 
 void fill_in_IP_header(struct iphdr *ip_header, const char *destIP) {
@@ -56,11 +57,11 @@ void fill_in_IP_header(struct iphdr *ip_header, const char *destIP) {
   ip_header->id=htons(0);
   ip_header->ihl = 5;
   ip_header->protocol=IPPROTO_ICMP;
-  //ip_header->saddr = 0;
-  //ip_header->check = 0;
+  ip_header->saddr = 0;
+  ip_header->check = 0;
   ip_header->tos = 0;
   ip_header->tot_len = htons(DATAGRAM_SIZE);
-  ip_header->ttl=64; ///////What should this be
+  ip_header->ttl=2; ///////What should this be
   ip_header->version = 4;
   
   //struct iphdr *ip = (struct iphdr *)packet; // Cast the pointer
@@ -99,10 +100,11 @@ int main (int argc, char *argv[]) {
 
   //1. Allocate two 64 byte buffers. One for sending and one for receiving.
   char *sendBuff = new char[DATAGRAM_SIZE];
-  char *recBuff = new char[512];
+  char *recBuff = new char[DATAGRAM_SIZE];
   // 2. Fill the whole buffer with a pattern of characters of your choice.
   // Convert from a dotted decimal string to network representation:
   buildDatagram(sendBuff, destIP.c_str());
+  //DEBUG << "Built Datagram" << ENDL;
   //memset(sendBuff, 'T', DATAGRAM_SIZE);
   //"Call me Ishmael. Some years ago- never mind how long precisely- "
   // 3. Fill in all the fields of the IP header at the front of the buffer.
@@ -126,20 +128,23 @@ int main (int argc, char *argv[]) {
   memset(&dest_addr, 0, sizeof(dest_addr));
   dest_addr.sin_family = AF_INET;
   dest_addr.sin_addr.s_addr = inet_addr(destIP.c_str());
-  bool responseGot = false;
+  bool lastHop = false;
   // 6. while (CURRENT_TTL <= 31) and (reply-not-received)
   // TTL LOOP START ##############################################
-  for(int current_ttl = 2; current_ttl <=31; current_ttl++){
-    
+  for(int current_ttl = 2; current_ttl <=31 && !lastHop; current_ttl++){
+    DEBUG << "In 31 for loop" << ENDL;
     // a. Set the TTL in the IP header in the buffer to CURRENT_TTL
     struct iphdr *ip_header = (struct iphdr *)sendBuff;
-    struct icmp *icmp_header = (struct icmp *)(sendBuff+sizeof(struct iphdr));
+    struct icmphdr *icmp_header = (struct icmphdr *)(sendBuff+sizeof(struct iphdr));
     ip_header->ttl = current_ttl;
     // b. Set the checksum in the ICMP header
     //initialize?
-    icmp_header->icmp_cksum = 0;
-    icmp_header->icmp_cksum = checksum((unsigned short *)icmp_header, DATAGRAM_SIZE - sizeof(struct iphdr));
+    icmp_header->checksum = 0;
+    icmp_header->checksum= checksum((unsigned short *)icmp_header, DATAGRAM_SIZE - sizeof(struct iphdr));
     // c. Send the buffer using sendfrom()
+    //printf("sizeof(iphdr): %zu, sizeof(icmp): %zu\n",
+      //  sizeof(struct iphdr), sizeof(struct icmp));
+    DEBUG << "Calling sendto" << ENDL;
     if (sendto(sendSockFD, sendBuff, DATAGRAM_SIZE, 0, (struct sockaddr *) &dest_addr, sizeof(dest_addr)) == -1){
       perror("sendto");
       return -1;
@@ -151,8 +156,10 @@ int main (int argc, char *argv[]) {
     struct timeval timeout;
     fd_set mySet;
     bool doneReading = false;
+    bool gotResponse = false;
     // POLLING LOOP START #####################################
     for(int i = 0; i<3 && !doneReading; i++){
+      DEBUG << "In wait loop run" << i << ENDL;
       FD_ZERO(&mySet);
       FD_SET(recSockFD, &mySet);
       timeout.tv_sec = 5;
@@ -160,16 +167,16 @@ int main (int argc, char *argv[]) {
       // i. Use select() to sleep for up to 5 seconds, wake up if data arrives.
       int poll = select(recSockFD+1, &mySet, NULL, NULL, &timeout);
       if(poll == 0){
-        if(i == 2){
-          printf("%d *** no response from poll after 15 seconds ***\n", current_ttl );
-        }
+        //if(i == 2){
+        //  printf("%d *** no response from poll after 15 seconds ***\n", current_ttl );
+        //}
         continue;
       }else if(poll < 0){
         perror("select");
         doneReading = true;
         break;
       }else{
-        printf("doing nothing = true\n");
+        printf("Data Available!\n");
       }
 
       if(FD_ISSET(recSockFD, &mySet)){
@@ -184,22 +191,32 @@ int main (int argc, char *argv[]) {
         inet_ntop(AF_INET, &rec_addr.sin_addr, respAddress, INET_ADDRSTRLEN);
           // 1. If received data is Echo Reply from the destination
         struct iphdr *rec_ip = (struct iphdr *)recBuff;
-        struct icmp *rec_icmp = (struct icmp *)(recBuff + (rec_ip->ihl*4)) ;
-        if(rec_icmp->icmp_type == ICMP_ECHOREPLY){
+        struct icmphdr *rec_icmp = (struct icmphdr *)(recBuff + (rec_ip->ihl*4)) ;
+        auto current = rec_addr.sin_addr.s_addr;
+        auto desired = dest_addr.sin_addr.s_addr;
+        bool correctDest = (current == desired);
+        if(rec_icmp->type == ICMP_ECHOREPLY && correctDest){
           // a. Print message
           // b. Set reply-not-received to false
           // c. Set not-done-reading to false
+          auto type = rec_icmp->type;
+          DEBUG << "Type : " << type << ENDL;
           printf("%d %s completed\n", current_ttl, respAddress);
-          responseGot = true;
-        }else if(rec_icmp->icmp_type == ICMP_TIME_EXCEEDED){
+          gotResponse = true;
+          doneReading = true;
+          lastHop = true;
+        }else if(rec_icmp->type == ICMP_TIME_EXCEEDED){
           // 2. If received data is TTL Time Exceeded; TTL
           // a. print message
           // b. Set not-done-reading to false
+          DEBUG << "GOT icmp time exceeded" << ENDL;
           printf("%d %s TTL exceeded\n", current_ttl, respAddress);
-          responseGot = true;
+          //responseGot = true;
+          gotResponse = true;
+          doneReading = true;
         }else{
-          printf("TTL: %2d, Response Address: %s, Weird ICMP type: %d \n", current_ttl, respAddress, rec_icmp->icmp_type);
-          responseGot = true;
+          printf("TTL: %2d, Response Address: %s, Other ICMP type: %d \n", current_ttl, respAddress, rec_icmp->type);
+          //responseGot = true;
         }
         
         //auto current = rec_addr.sin_addr.s_addr;
@@ -213,7 +230,9 @@ int main (int argc, char *argv[]) {
     //if(!responseGot){
     //  printf("%d *** no response from poll after 15 seconds ***\n", current_ttl );
     //}
-    
+    if(!gotResponse){
+      printf("%d no response *********", current_ttl);
+    }
       // ii. If data has arrived, read it with recevfrom()
     
         
