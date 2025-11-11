@@ -47,7 +47,7 @@ void fill_in_ICMP_header(struct icmphdr *icmp_header){
   icmp_header->checksum = 0;
   icmp_header->code = 0;
   icmp_header->type = ICMP_ECHO;
-  icmp_header->un.echo.id = htons(1000);
+  icmp_header->un.echo.id = 0;
   icmp_header->un.echo.sequence =1;
 }
 
@@ -61,7 +61,7 @@ void fill_in_IP_header(struct iphdr *ip_header, const char *destIP) {
   ip_header->check = 0;
   ip_header->tos = 0;
   ip_header->tot_len = htons(DATAGRAM_SIZE);
-  ip_header->ttl=2; ///////What should this be
+  ip_header->ttl=64; ///////What should this be
   ip_header->version = 4;
   
   //struct iphdr *ip = (struct iphdr *)packet; // Cast the pointer
@@ -182,7 +182,7 @@ int main (int argc, char *argv[]) {
       if(FD_ISSET(recSockFD, &mySet)){
         struct sockaddr_in rec_addr;
         socklen_t r_length = sizeof(rec_addr);
-        ssize_t bytes_read = recvfrom(recSockFD, recBuff, sizeof(recBuff), 0, (struct sockaddr *)&rec_addr, &r_length);
+        ssize_t bytes_read = recvfrom(recSockFD, recBuff, DATAGRAM_SIZE, 0, (struct sockaddr *)&rec_addr, &r_length);
         if(bytes_read < 0){
             perror("recvfrom");
             continue;
@@ -190,8 +190,18 @@ int main (int argc, char *argv[]) {
         char respAddress[INET_ADDRSTRLEN];
         inet_ntop(AF_INET, &rec_addr.sin_addr, respAddress, INET_ADDRSTRLEN);
           // 1. If received data is Echo Reply from the destination
+        
+        struct iphdr *recv_ip = (struct iphdr *)recBuff;
+        int ip_hdr_len = recv_ip->ihl * 4;
+
+        
+
         struct iphdr *rec_ip = (struct iphdr *)recBuff;
-        struct icmphdr *rec_icmp = (struct icmphdr *)(recBuff + (rec_ip->ihl*4)) ;
+        int ih_len = rec_ip->ihl*4;
+        struct icmphdr *rec_icmp = (struct icmphdr *)(recBuff+ih_len);
+        
+      
+        printf("ICMP Type: %d, Code: %d\n", rec_icmp->type, rec_icmp->code);
         auto current = rec_addr.sin_addr.s_addr;
         auto desired = dest_addr.sin_addr.s_addr;
         bool correctDest = (current == desired);
@@ -205,7 +215,7 @@ int main (int argc, char *argv[]) {
           gotResponse = true;
           doneReading = true;
           lastHop = true;
-        }else if(rec_icmp->type == ICMP_TIME_EXCEEDED){
+        }else if(rec_icmp->type == ICMP_TIME_EXCEEDED && rec_icmp->code == ICMP_EXC_TTL){
           // 2. If received data is TTL Time Exceeded; TTL
           // a. print message
           // b. Set not-done-reading to false
@@ -215,9 +225,10 @@ int main (int argc, char *argv[]) {
           gotResponse = true;
           doneReading = true;
         }else{
-          printf("TTL: %2d, Response Address: %s, Other ICMP type: %d \n", current_ttl, respAddress, rec_icmp->type);
+          printf("TTL: %2d, Response Address: %s, Other ICMP type: %d code: %d \n", current_ttl, respAddress, rec_icmp->type, rec_icmp->code);
           //responseGot = true;
         }
+        
         
         //auto current = rec_addr.sin_addr.s_addr;
         //auto desired = dest_addr.sin_addr.s_addr;
