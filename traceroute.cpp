@@ -180,7 +180,8 @@ int main (int argc, char *argv[]) {
         auto current = rec_addr.sin_addr.s_addr;
         auto desired = dest_addr.sin_addr.s_addr;
         bool correctDest = (current == desired);
-        if(rec_icmp->type == ICMP_ECHOREPLY && correctDest){
+        // && correctDest
+        if(rec_icmp->type == ICMP_ECHOREPLY){
           // a. Print message
           // b. Set reply-not-received to false
           // c. Set not-done-reading to false
